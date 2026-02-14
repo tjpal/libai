@@ -36,12 +36,8 @@ class OpenAILLM @Inject constructor(
     }
 
     override fun createResponseRequestChain(): RequestResponseChain {
-        val result = OpenAIRequestResponseChain(client, toolRegistry, garbageCollectionStore)
-        result.create()
-
         logger.debug("OpenAI RequestResponseChain created")
-
-        return result
+        return OpenAIRequestResponseChain(client, toolRegistry, garbageCollectionStore)
     }
 
     override fun transcriptAudio(filePath: String): String {

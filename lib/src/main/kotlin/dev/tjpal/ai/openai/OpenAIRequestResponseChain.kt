@@ -1,7 +1,6 @@
 package dev.tjpal.ai.openai
 
 import com.openai.client.OpenAIClient
-import com.openai.models.conversations.Conversation
 import com.openai.models.responses.ResponseCreateParams
 import com.openai.models.responses.ResponseInputItem
 import com.openai.models.responses.ResponseOutputItem
@@ -9,6 +8,9 @@ import dev.tjpal.ai.messages.Request
 import dev.tjpal.ai.messages.RequestResponseChain
 import dev.tjpal.ai.messages.Response
 import dev.tjpal.ai.tools.ToolRegistry
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import org.slf4j.LoggerFactory
@@ -19,19 +21,62 @@ class OpenAIRequestResponseChain(
     private val gcStore: ResponsesGarbageCollector
 ) : RequestResponseChain() {
     private val logger = LoggerFactory.getLogger(OpenAIRequestResponseChain::class.java)
-    private var conversation: Conversation? = null
+    private var conversationId: String? = null
     private var responseIDs = mutableListOf<String>()
+    private var messages = mutableListOf<PersistedMessage>()
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun create() {
-        conversation = client.conversations().create()
-        logger.debug("OpenAI conversation created id={}", conversation?.id())
+    @Serializable
+    private data class PersistedMessage(
+        val role: String,
+        val content: String
+    )
+
+    @Serializable
+    private data class PersistedChainState(
+        val version: Int = 1,
+        val conversationId: String? = null,
+        val responseIds: List<String> = emptyList(),
+        val messages: List<PersistedMessage> = emptyList()
+    )
+
+    override fun persist(): String {
+        val state = PersistedChainState(
+            conversationId = conversationId,
+            responseIds = responseIDs.toList(),
+            messages = messages.toList()
+        )
+
+        return json.encodeToString(state)
+    }
+
+    override fun load(serializedState: String) {
+        val state = try {
+            json.decodeFromString<PersistedChainState>(serializedState)
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Could not deserialize request-response chain state: ${e.message}", e)
+        }
+
+        if (state.version != 1) {
+            throw IllegalArgumentException("Unsupported request-response chain state version: ${state.version}")
+        }
+
+        conversationId = state.conversationId
+        responseIDs = state.responseIds.toMutableList()
+        messages = state.messages.toMutableList()
+
+        logger.debug(
+            "Loaded request-response chain state conversationId={} responseCount={} messageCount={}",
+            conversationId,
+            responseIDs.size,
+            messages.size
+        )
     }
 
     override fun createResponse(request: Request): Response {
-        val conversation = conversation ?: throw IllegalStateException("Conversation not initialized")
-        val conversationID = conversation.id()
+        val conversationID = ensureConversationId()
+        messages.add(PersistedMessage(role = "user", content = request.input))
 
         val initialUserMessage = initialUserMessage(request)
 
@@ -68,13 +113,18 @@ class OpenAIRequestResponseChain(
 
         val finalMessage = extractMessage(lastApiResponse)
         logger.debug("Final message extracted: {}", finalMessage.take(200))
+        messages.add(PersistedMessage(role = "assistant", content = finalMessage))
 
         return Response(message = finalMessage)
     }
 
     override fun delete() {
-        val conversation = conversation ?: throw IllegalStateException("Conversation not initialized")
-        val conversationID = conversation.id()
+        val conversationID = conversationId ?: run {
+            logger.debug("OpenAIRequestResponseChain: No active conversation to delete")
+            responseIDs.clear()
+            messages.clear()
+            return
+        }
 
         logger.debug("OpenAIRequestResponseChain: Deleting responses for conversation {}", conversationID)
 
@@ -107,8 +157,22 @@ class OpenAIRequestResponseChain(
             logger.error("Failed to delete conversation {}", conversationID, e)
         }
 
-        this.conversation = null
+        this.conversationId = null
         responseIDs.clear()
+        messages.clear()
+    }
+
+    private fun ensureConversationId(): String {
+        val existingConversationId = conversationId
+        if (existingConversationId != null) {
+            return existingConversationId
+        }
+
+        val createdConversationId = client.conversations().create().id()
+        conversationId = createdConversationId
+        logger.debug("OpenAI conversation created id={}", createdConversationId)
+
+        return createdConversationId
     }
 
     private fun initialUserMessage(request: Request): ResponseInputItem {
