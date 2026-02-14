@@ -12,3 +12,4 @@ plugins {
 
 rootProject.name = "libai"
 include("lib")
+include("libaicli")
