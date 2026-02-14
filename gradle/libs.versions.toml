@@ -1,0 +1,19 @@
+[versions]
+kotlin = "2.3.10"
+kotlinx-serialization = "1.9.0"
+dagger = "2.57.2"
+openai = "4.13.0"
+slf4j = "2.0.17"
+
+[libraries]
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+dagger = { module = "com.google.dagger:dagger", version.ref = "dagger" }
+dagger-compiler = { module = "com.google.dagger:dagger-compiler", version.ref = "dagger" }
+openai = { module = "com.openai:openai-java", version.ref = "openai" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version = "2.2.20" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version = "2.2.20" }
+kotlin-kapt = { id = "org.jetbrains.kotlin.kapt", version = "2.2.20" }
