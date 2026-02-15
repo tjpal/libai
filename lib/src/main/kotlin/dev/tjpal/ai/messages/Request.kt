@@ -12,5 +12,5 @@ data class Request(
     val tools: List<KClass<out Tool>> = emptyList(),
     val temperature: Double = 1.0,
     val topP: Double? = null,
-    val toolStaticParameters: Map<String, JsonElement>? = null
+    val toolStaticParametersByClass: Map<KClass<out Tool>, JsonElement>? = null
 )

@@ -12,6 +12,7 @@ repositories {
 dependencies {
     implementation(project(":lib"))
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.jackson.databind)
     runtimeOnly("org.slf4j:slf4j-simple:2.0.17")
 }
 

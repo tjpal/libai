@@ -197,7 +197,12 @@ class OpenAIRequestResponseChain(
             .conversation(conversationID)
 
         request.tools.forEach { toolKClass ->
-            logger.debug("Adding tool to response builder: {}", toolKClass.qualifiedName)
+            val definitionName = toolRegistry.registerToolClass(toolKClass)
+            logger.debug(
+                "Adding tool to response builder: class={} definition={}",
+                toolKClass.qualifiedName,
+                definitionName
+            )
             builder.addTool(toolKClass.java)
         }
 
@@ -232,11 +237,11 @@ class OpenAIRequestResponseChain(
                 null
             }
 
-            val nodeParams: JsonElement? = request.toolStaticParameters?.get(functionName)
+            val staticParams: JsonElement? = resolveStaticParameters(functionName, request)
 
             val toolOutput: String = try {
-                logger.info("Invoking tool {} with arguments={} nodeParams={}", functionName, parsedArguments, nodeParams)
-                toolRegistry.invokeTool(functionName, parsedArguments, nodeParams)
+                logger.info("Invoking tool {} with arguments={} staticParams={}", functionName, parsedArguments, staticParams)
+                toolRegistry.invokeTool(functionName, parsedArguments, staticParams)
             } catch (e: Exception) {
                 val msg = "Tool invocation failed for $functionName: ${e.message}"
                 logger.error(msg, e)
@@ -261,6 +266,17 @@ class OpenAIRequestResponseChain(
         }
 
         return nextItems
+    }
+
+    private fun resolveStaticParameters(functionName: String, request: Request): JsonElement? {
+        val byClass = request.toolStaticParametersByClass ?: return null
+        for ((toolClass, staticParams) in byClass) {
+            if (toolRegistry.getDefinitionName(toolClass) == functionName) {
+                return staticParams
+            }
+        }
+
+        return null
     }
 
     private fun extractMessage(response: com.openai.models.responses.Response): String {

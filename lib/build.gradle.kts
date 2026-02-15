@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.kapt)
     alias(libs.plugins.kotlin.serialization)
     `java-library`
+    `maven-publish`
 }
 
 repositories {
@@ -10,7 +11,7 @@ repositories {
 }
 
 group = "dev.tjpal.ai"
-version = "1.0.0"
+version = "1.1.0"
 
 dependencies {
     testImplementation(libs.kotlin.test)
@@ -30,4 +31,26 @@ java {
 
 tasks.named<Test>("test") {
     useJUnitPlatform()
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("libai") {
+            from(components["kotlin"])
+            groupId = project.group.toString()
+            artifactId = "libai"
+            version = project.version.toString()
+        }
+    }
+    repositories {
+        maven {
+            name = "local"
+            mavenLocal()
+        }
+    }
+}
+
+tasks.register<PublishToMavenRepository>("publishToLocal") {
+    publication = publishing.publications["libai"] as MavenPublication
+    repository = publishing.repositories["local"] as MavenArtifactRepository
 }

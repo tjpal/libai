@@ -4,12 +4,18 @@ import dev.tjpal.ai.di.AIComponent
 import dev.tjpal.ai.di.DaggerAIComponent
 import dev.tjpal.ai.di.LLMProvider
 import dev.tjpal.ai.openai.OpenAIConfig
+import dev.tjpal.ai.tools.NoArgToolInstantiator
+import dev.tjpal.ai.tools.ToolInstantiator
 import java.security.InvalidParameterException
 
-class LibAI(private val config: OpenAIConfig) {
+class LibAI(
+    private val config: OpenAIConfig,
+    private val toolInstantiator: ToolInstantiator = NoArgToolInstantiator()
+) {
     private val component: AIComponent by lazy {
         DaggerAIComponent.builder()
             .config(config)
+            .toolInstantiator(toolInstantiator)
             .build()
     }
 

@@ -7,19 +7,24 @@ import dev.tjpal.ai.openai.OpenAIConfig
 import java.nio.file.Files
 import kotlin.io.path.Path
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlin.system.exitProcess
 
 private val json = Json { ignoreUnknownKeys = true }
 
 fun main(args: Array<String>) {
-    if (args.size < 3) {
-        System.err.println("Usage: libaicli <provider> <model> <message>")
+    val enableHelloTool = args.contains("--hello-tool")
+    val positionalArgs = args.filterNot { it == "--hello-tool" }
+
+    if (positionalArgs.size < 3) {
+        System.err.println("Usage: libaicli <provider> <model> <message> [--hello-tool]")
         exitProcess(1)
     }
 
-    val provider = args[0]
-    val model = args[1]
-    val message = args.drop(2).joinToString(" ").trim()
+    val provider = positionalArgs[0]
+    val model = positionalArgs[1]
+    val message = positionalArgs.drop(2).joinToString(" ").trim()
 
     if (message.isEmpty()) {
         System.err.println("Error: Message must not be empty")
@@ -37,14 +42,32 @@ fun main(args: Array<String>) {
     var chain: RequestResponseChain? = null
 
     try {
-        val llm = LibAI(config).llm(provider)
+        val libAI = LibAI(config)
+        val llm = libAI.llm(provider)
         chain = llm.createResponseRequestChain()
+
+        val instructions = if (enableHelloTool) {
+            "You must call the hello_world tool exactly once before answering the user. " +
+                "Include the tool output verbatim in the final answer."
+        } else {
+            "Answer the user message clearly and directly."
+        }
 
         val response = chain.createResponse(
             Request(
                 input = message,
-                instructions = "Answer the user message clearly and directly.",
-                model = model
+                instructions = instructions,
+                model = model,
+                tools = if (enableHelloTool) listOf(HelloWorldTool::class) else emptyList(),
+                toolStaticParametersByClass = if (enableHelloTool) {
+                    mapOf(
+                        HelloWorldTool::class to buildJsonObject {
+                            put("greetingPrefix", "Hello")
+                        }
+                    )
+                } else {
+                    null
+                }
             )
         )
 

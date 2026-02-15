@@ -8,5 +8,5 @@ import dev.tjpal.ai.di.LibrarySingleton
 class ToolsModule {
     @Provides
     @LibrarySingleton
-    fun provideToolRegistry(): ToolRegistry = ToolRegistry()
+    fun provideToolRegistry(toolInstantiator: ToolInstantiator): ToolRegistry = ToolRegistry(toolInstantiator)
 }

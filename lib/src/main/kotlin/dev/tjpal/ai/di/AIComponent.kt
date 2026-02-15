@@ -5,6 +5,7 @@ import dagger.Component
 import dev.tjpal.ai.di.AIModule
 import dev.tjpal.ai.LLM
 import dev.tjpal.ai.openai.OpenAIConfig
+import dev.tjpal.ai.tools.ToolInstantiator
 import dev.tjpal.ai.tools.ToolsModule
 
 @LibrarySingleton
@@ -16,6 +17,9 @@ interface AIComponent {
     interface Builder {
         @BindsInstance
         fun config(config: OpenAIConfig): Builder
+
+        @BindsInstance
+        fun toolInstantiator(toolInstantiator: ToolInstantiator): Builder
 
         fun build(): AIComponent
     }
