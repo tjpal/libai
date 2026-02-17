@@ -21,6 +21,8 @@ dependencies {
     kapt(libs.dagger.compiler)
     implementation(libs.openai)
     implementation(libs.slf4j.api)
+    implementation(libs.docker.java.core)
+    implementation(libs.docker.java.transport.httpclient5)
 }
 
 java {
