@@ -5,6 +5,7 @@ import dagger.Component
 import dev.tjpal.ai.di.AIModule
 import dev.tjpal.ai.LLM
 import dev.tjpal.ai.openai.OpenAIConfig
+import dev.tjpal.ai.openai.OpenAINativeToolRuntime
 import dev.tjpal.ai.sandbox.Sandbox
 import dev.tjpal.ai.sandbox.SandboxModule
 import dev.tjpal.ai.tools.ToolInstantiator
@@ -23,6 +24,9 @@ interface AIComponent {
 
         @BindsInstance
         fun toolInstantiator(toolInstantiator: ToolInstantiator): Builder
+
+        @BindsInstance
+        fun openAINativeToolRuntime(openAINativeToolRuntime: OpenAINativeToolRuntime): Builder
 
         fun build(): AIComponent
     }

@@ -18,7 +18,8 @@ import org.slf4j.LoggerFactory
 @LibrarySingleton
 class OpenAILLM @Inject constructor(
     private val config: OpenAIConfig,
-    private val toolRegistry: ToolRegistry
+    private val toolRegistry: ToolRegistry,
+    private val openAINativeToolRuntime: OpenAINativeToolRuntime
 ) : LLM {
     private val logger = LoggerFactory.getLogger(OpenAILLM::class.java)
     private val client = buildClientFromFile()
@@ -37,7 +38,7 @@ class OpenAILLM @Inject constructor(
 
     override fun createResponseRequestChain(): RequestResponseChain {
         logger.debug("OpenAI RequestResponseChain created")
-        return OpenAIRequestResponseChain(client, toolRegistry, garbageCollectionStore)
+        return OpenAIRequestResponseChain(client, toolRegistry, garbageCollectionStore, openAINativeToolRuntime)
     }
 
     override fun transcriptAudio(filePath: String): String {

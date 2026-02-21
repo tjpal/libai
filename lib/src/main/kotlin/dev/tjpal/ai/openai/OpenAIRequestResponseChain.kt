@@ -7,6 +7,7 @@ import com.openai.models.responses.ResponseOutputItem
 import dev.tjpal.ai.messages.Request
 import dev.tjpal.ai.messages.RequestResponseChain
 import dev.tjpal.ai.messages.Response
+import dev.tjpal.ai.tools.ToolDefinition
 import dev.tjpal.ai.tools.ToolRegistry
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -18,7 +19,8 @@ import org.slf4j.LoggerFactory
 class OpenAIRequestResponseChain(
     private val client: OpenAIClient,
     private val toolRegistry: ToolRegistry,
-    private val gcStore: ResponsesGarbageCollector
+    private val gcStore: ResponsesGarbageCollector,
+    private val nativeToolRuntime: OpenAINativeToolRuntime
 ) : RequestResponseChain() {
     private val logger = LoggerFactory.getLogger(OpenAIRequestResponseChain::class.java)
     private var conversationId: String? = null
@@ -101,14 +103,14 @@ class OpenAIRequestResponseChain(
 
             logger.debug("Received response id={} conversation={}", lastApiResponse.id(), conversationID)
 
-            val functionCallItems = lastApiResponse.output().filter { it.isFunctionCall() }
+            val toolOutputItems = processToolCalls(lastApiResponse.output(), request)
 
-            if (functionCallItems.isEmpty()) {
+            if (toolOutputItems.isEmpty()) {
                 logger.debug("Final response reached id={}", lastApiResponse.id())
                 break
             }
 
-            itemsToSend = processFunctionCalls(functionCallItems, request)
+            itemsToSend = toolOutputItems
         }
 
         val finalMessage = extractMessage(lastApiResponse)
@@ -196,14 +198,22 @@ class OpenAIRequestResponseChain(
             .temperature(request.temperature)
             .conversation(conversationID)
 
-        request.tools.forEach { toolKClass ->
-            val definitionName = toolRegistry.registerToolClass(toolKClass)
-            logger.debug(
-                "Adding tool to response builder: class={} definition={}",
-                toolKClass.qualifiedName,
-                definitionName
-            )
-            builder.addTool(toolKClass.java)
+        resolvedToolDefinitions(request).forEach { definition ->
+            when (definition) {
+                is ToolDefinition.Function -> {
+                    val definitionName = toolRegistry.registerToolClass(definition.toolClass)
+                    logger.debug(
+                        "Adding function tool to response builder: class={} definition={}",
+                        definition.toolClass.qualifiedName,
+                        definitionName
+                    )
+                    builder.addTool(definition.toolClass.java)
+                }
+                is ToolDefinition.Native -> {
+                    logger.debug("Adding native tool to response builder: type={}", definition.type)
+                    nativeToolRuntime.addTool(builder, definition)
+                }
+            }
         }
 
         request.responseType?.let {
@@ -221,62 +231,95 @@ class OpenAIRequestResponseChain(
         return client.responses().create(builder.build())
     }
 
-    private fun processFunctionCalls(functionCallItems: List<ResponseOutputItem>, request: Request): List<ResponseInputItem> {
+    private fun processToolCalls(outputItems: List<ResponseOutputItem>, request: Request): List<ResponseInputItem> {
         val nextItems = mutableListOf<ResponseInputItem>()
 
-        for (item in functionCallItems) {
-            val functionCall = item.asFunctionCall()
-            val functionName = functionCall.name()
-            logger.info("Model requested function call name={} callId={}", functionName, functionCall.callId())
+        for (item in outputItems) {
+            if (item.isFunctionCall()) {
+                val functionCall = item.asFunctionCall()
+                val functionName = functionCall.name()
+                logger.info("Model requested function call name={} callId={}", functionName, functionCall.callId())
 
-            val parsedArguments: JsonElement? = try {
-                val rawArgs = functionCall.arguments()
-                json.parseToJsonElement(rawArgs)
-            } catch (e: Exception) {
-                logger.error("Failed to parse function call arguments for {}: {}", functionName, e.message)
-                null
-            }
+                val parsedArguments: JsonElement? = try {
+                    val rawArgs = functionCall.arguments()
+                    json.parseToJsonElement(rawArgs)
+                } catch (e: Exception) {
+                    logger.error("Failed to parse function call arguments for {}: {}", functionName, e.message)
+                    null
+                }
 
-            val staticParams: JsonElement? = resolveStaticParameters(functionName, request)
+                val staticParams: JsonElement? = resolveStaticParameters(functionName, request)
 
-            val toolOutput: String = try {
-                logger.info("Invoking tool {} with arguments={} staticParams={}", functionName, parsedArguments, staticParams)
-                toolRegistry.invokeTool(functionName, parsedArguments, staticParams)
-            } catch (e: Exception) {
-                val msg = "Tool invocation failed for $functionName: ${e.message}"
-                logger.error(msg, e)
-                throw IllegalStateException(msg, e)
-            }
+                val toolOutput: String = try {
+                    logger.info(
+                        "Invoking tool {} with arguments={} staticParams={}",
+                        functionName,
+                        parsedArguments,
+                        staticParams
+                    )
+                    toolRegistry.invokeTool(functionName, parsedArguments, staticParams)
+                } catch (e: Exception) {
+                    val msg = "Tool invocation failed for $functionName: ${e.message}"
+                    logger.error(msg, e)
+                    throw IllegalStateException(msg, e)
+                }
 
-            logger.info(
-                "Tool {} executed successfully callId={} outputPreview={}",
-                functionName,
-                functionCall.callId(),
-                toolOutput.take(200)
-            )
-
-            nextItems.add(
-                ResponseInputItem.ofFunctionCallOutput(
-                    ResponseInputItem.FunctionCallOutput.builder()
-                        .callId(functionCall.callId())
-                        .output(toolOutput)
-                        .build()
+                logger.info(
+                    "Tool {} executed successfully callId={} outputPreview={}",
+                    functionName,
+                    functionCall.callId(),
+                    toolOutput.take(200)
                 )
-            )
+
+                nextItems.add(
+                    ResponseInputItem.ofFunctionCallOutput(
+                        ResponseInputItem.FunctionCallOutput.builder()
+                            .callId(functionCall.callId())
+                            .output(toolOutput)
+                            .build()
+                    )
+                )
+
+                continue
+            }
+
+            val nativeOutput = nativeToolRuntime.handleOutputItem(item, request)
+            if (nativeOutput != null) {
+                nextItems.add(nativeOutput)
+            }
         }
 
         return nextItems
     }
 
-    private fun resolveStaticParameters(functionName: String, request: Request): JsonElement? {
+    private fun resolveStaticParameters(definitionName: String, request: Request): JsonElement? {
+        request.toolStaticParametersByDefinitionName?.get(definitionName)?.let { return it }
+
         val byClass = request.toolStaticParametersByClass ?: return null
         for ((toolClass, staticParams) in byClass) {
-            if (toolRegistry.getDefinitionName(toolClass) == functionName) {
+            if (toolRegistry.getDefinitionName(toolClass) == definitionName) {
                 return staticParams
             }
         }
 
         return null
+    }
+
+    private fun resolvedToolDefinitions(request: Request): List<ToolDefinition> {
+        if (request.toolDefinitions.isEmpty()) {
+            return request.tools.map { ToolDefinition.Function(it) }
+        }
+
+        val merged = request.toolDefinitions + request.tools.map { ToolDefinition.Function(it) }
+        return merged.distinctBy { definition ->
+            when (definition) {
+                is ToolDefinition.Function -> {
+                    val toolId = definition.toolClass.qualifiedName ?: definition.toolClass.toString()
+                    "function:$toolId"
+                }
+                is ToolDefinition.Native -> "native:${definition.type}"
+            }
+        }
     }
 
     private fun extractMessage(response: com.openai.models.responses.Response): String {
