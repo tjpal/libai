@@ -11,7 +11,7 @@ data class Request(
     val model: String = "gpt-5-mini",
     val responseType: KClass<*>? = null,
     val tools: List<KClass<out Tool>> = emptyList(),
-    val temperature: Double = 1.0,
+    val temperature: Double? = null,
     val topP: Double? = null,
     val toolStaticParametersByClass: Map<KClass<out Tool>, JsonElement>? = null,
     val toolDefinitions: List<ToolDefinition> = emptyList(),

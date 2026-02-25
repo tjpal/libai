@@ -195,8 +195,12 @@ class OpenAIRequestResponseChain(
             .input(ResponseCreateParams.Input.ofResponse(items))
             .instructions(request.instructions)
             .model(request.model)
-            .temperature(request.temperature)
             .conversation(conversationID)
+
+        request.temperature?.let {
+            logger.debug("Setting temperature to: {}", it)
+            builder.temperature(it)
+        }
 
         resolvedToolDefinitions(request).forEach { definition ->
             when (definition) {
