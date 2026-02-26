@@ -1,5 +1,6 @@
 package dev.tjpal.ai
 
+import dev.tjpal.ai.audio.AudioRecorder
 import dev.tjpal.ai.di.AIComponent
 import dev.tjpal.ai.di.DaggerAIComponent
 import dev.tjpal.ai.di.LLMProvider
@@ -33,5 +34,9 @@ class LibAI(
     fun llm(providerName: String): LLM {
         return llmsByProvider[providerName]
             ?: throw InvalidParameterException("No LLM is registered for provider '$providerName'. Available providers: ${llmsByProvider.keys.sorted()}")
+    }
+
+    fun audioRecorder(): AudioRecorder {
+        return AudioRecorder()
     }
 }
