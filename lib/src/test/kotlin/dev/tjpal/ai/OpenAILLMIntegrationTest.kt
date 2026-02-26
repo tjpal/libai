@@ -11,6 +11,7 @@ import dev.tjpal.ai.tools.ToolExecutionContext
 import java.nio.file.Files
 import kotlin.io.path.Path
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
@@ -78,6 +79,32 @@ class OpenAILLMIntegrationTest {
         }
     }
 
+    @Test
+    fun synthesizesAndTranscribesAudioRoundTrip() {
+        val configPath = Path(System.getProperty("user.home"), ".libai", "config.json")
+        check(Files.exists(configPath)) { "Missing config file: $configPath" }
+
+        val config = json.decodeFromString<OpenAIConfig>(Files.readString(configPath))
+        val llm = LibAI(config).llm(LLMProvider.OPENAI)
+
+        val expectedText = "This is a speech round trip integration test"
+        val audioFile = Files.createTempFile("libai-tts-roundtrip-", ".mp3")
+
+        try {
+            llm.synthesizeSpeech(expectedText, audioFile.toString())
+
+            val audioSizeBytes = Files.size(audioFile)
+            assertTrue(audioSizeBytes > 1024, "Expected generated audio file to be larger than 1KB")
+
+            val transcribedText = llm.transcriptAudio(audioFile.toString())
+            println("Transcribed text: $transcribedText")
+
+            assertEquals(normalizeForComparison(expectedText), normalizeForComparison(transcribedText))
+        } finally {
+            Files.deleteIfExists(audioFile)
+        }
+    }
+
     @JsonTypeName("hello_world")
     @JsonClassDescription("Generate a hello-style greeting for the provided name.")
     class IntegrationHelloWorldTool : Tool {
@@ -94,5 +121,13 @@ class OpenAILLMIntegrationTest {
             val target = nameFromArgs?.trim().takeUnless { it.isNullOrEmpty() } ?: "World"
             return "$greetingPrefix, $target!"
         }
+    }
+
+    private fun normalizeForComparison(input: String): String {
+        return input
+            .lowercase()
+            .replace(Regex("[^a-z0-9\\s]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
     }
 }

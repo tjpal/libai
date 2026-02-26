@@ -3,6 +3,8 @@ package dev.tjpal.ai.openai
 import com.openai.client.OpenAIClient
 import com.openai.client.okhttp.OpenAIOkHttpClient
 import com.openai.models.audio.AudioModel
+import com.openai.models.audio.speech.SpeechCreateParams
+import com.openai.models.audio.speech.SpeechModel
 import com.openai.models.audio.transcriptions.TranscriptionCreateParams
 import dev.tjpal.ai.LLM
 import dev.tjpal.ai.messages.RequestResponseChain
@@ -11,6 +13,7 @@ import dev.tjpal.ai.tools.ToolRegistry
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
 import javax.inject.Inject
 import kotlin.io.path.Path
 import org.slf4j.LoggerFactory
@@ -39,6 +42,31 @@ class OpenAILLM @Inject constructor(
     override fun createResponseRequestChain(): RequestResponseChain {
         logger.debug("OpenAI RequestResponseChain created")
         return OpenAIRequestResponseChain(client, toolRegistry, garbageCollectionStore, openAINativeToolRuntime)
+    }
+
+    override fun synthesizeSpeech(text: String, outputFilePath: String) {
+        require(text.isNotBlank()) { "Input text must not be blank." }
+
+        val outputPath = Paths.get(outputFilePath)
+        outputPath.parent?.let { Files.createDirectories(it) }
+        logger.info("Synthesizing speech to file={}", outputFilePath)
+
+        val params = SpeechCreateParams.builder()
+            .model(SpeechModel.GPT_4O_MINI_TTS)
+            .voice(SpeechCreateParams.Voice.ALLOY)
+            .input(text)
+            .responseFormat(SpeechCreateParams.ResponseFormat.MP3)
+            .speed(1.0)
+            .build()
+
+        client.audio()
+            .withRawResponse()
+            .speech()
+            .create(params)
+            .body()
+            .use { audio ->
+                Files.copy(audio, outputPath, StandardCopyOption.REPLACE_EXISTING)
+            }
     }
 
     override fun transcriptAudio(filePath: String): String {
