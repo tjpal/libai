@@ -4,6 +4,9 @@ import com.openai.models.responses.ResponseFunctionShellToolCall
 import com.openai.models.responses.ResponseInputItem
 import com.openai.models.responses.ResponseLocalEnvironment
 import com.openai.models.responses.ResponseOutputItem
+import dev.tjpal.ai.messages.DefaultExecutionContext
+import dev.tjpal.ai.sandbox.CommandExecutionContext
+import dev.tjpal.ai.sandbox.CommandExecutionResult
 import dev.tjpal.ai.messages.Request
 import dev.tjpal.ai.tools.ToolDefinition
 import java.io.File
@@ -55,7 +58,8 @@ class OpenAIShellToolRuntimeTest {
 
         val inputItem = runtime.handleOutputItem(
             ResponseOutputItem.ofShellCall(shellCall),
-            Request(input = "x", instructions = "y")
+            Request(input = "x", instructions = "y"),
+            DefaultExecutionContext
         )
 
         assertNotNull(inputItem)
@@ -89,7 +93,8 @@ class OpenAIShellToolRuntimeTest {
         assertFailsWith<IllegalArgumentException> {
             runtime.handleOutputItem(
                 ResponseOutputItem.ofShellCall(shellCall),
-                Request(input = "x", instructions = "y")
+                Request(input = "x", instructions = "y"),
+                DefaultExecutionContext
             )
         }
     }
@@ -114,7 +119,8 @@ class OpenAIShellToolRuntimeTest {
 
         val inputItem = runtime.handleOutputItem(
             ResponseOutputItem.ofShellCall(shellCall),
-            Request(input = "x", instructions = "y")
+            Request(input = "x", instructions = "y"),
+            DefaultExecutionContext
         )
 
         assertNotNull(inputItem)
@@ -122,5 +128,43 @@ class OpenAIShellToolRuntimeTest {
         assertEquals(1, shellOutput.output().size)
         assertEquals("ok", shellOutput.output()[0].stdout())
         assertEquals(0L, shellOutput.output()[0].outcome().asExit().exitCode())
+    }
+
+    @Test
+    fun `execution context executor overrides default runtime executor`() {
+        val runtime = OpenAIShellToolRuntime { _, _ ->
+            OpenAIShellCommandResult(stdout = "default", stderr = "", exitCode = 0)
+        }
+        val shellContext = object : CommandExecutionContext {
+            override val id: String = "test-context"
+
+            override fun executeCommand(command: String, timeoutMs: Long?): CommandExecutionResult {
+                return CommandExecutionResult(stdout = "context", stderr = "", exitCode = 0)
+            }
+        }
+
+        val shellCall = ResponseFunctionShellToolCall.builder()
+            .id("shell_call_4")
+            .callId("call_001")
+            .environment(ResponseLocalEnvironment.builder().build())
+            .status(ResponseFunctionShellToolCall.Status.COMPLETED)
+            .action(
+                ResponseFunctionShellToolCall.Action.builder()
+                    .commands(listOf("printf context"))
+                    .maxOutputLength(4_096L)
+                    .timeoutMs(1_000L)
+                    .build()
+            )
+            .build()
+
+        val inputItem = runtime.handleOutputItem(
+            ResponseOutputItem.ofShellCall(shellCall),
+            Request(input = "x", instructions = "y"),
+            shellContext
+        )
+
+        assertNotNull(inputItem)
+        val shellOutput = inputItem.asShellCallOutput()
+        assertEquals("context", shellOutput.output()[0].stdout())
     }
 }

@@ -4,6 +4,7 @@ import com.openai.client.OpenAIClient
 import com.openai.models.responses.ResponseCreateParams
 import com.openai.models.responses.ResponseInputItem
 import com.openai.models.responses.ResponseOutputItem
+import dev.tjpal.ai.messages.ExecutionContext
 import dev.tjpal.ai.messages.Request
 import dev.tjpal.ai.messages.RequestResponseChain
 import dev.tjpal.ai.messages.Response
@@ -76,14 +77,14 @@ class OpenAIRequestResponseChain(
         )
     }
 
-    override fun createResponse(request: Request): Response {
+    override fun createResponse(request: Request, executionContext: ExecutionContext): Response {
         val conversationID = ensureConversationId()
         messages.add(PersistedMessage(role = "user", content = request.input))
 
         val initialUserMessage = initialUserMessage(request)
 
         var itemsToSend: List<ResponseInputItem> = listOf(initialUserMessage)
-        var lastApiResponse: com.openai.models.responses.Response
+        var lastApiResponse: com.openai.models.responses.Response? = null
 
         while (true) {
             try {
@@ -94,26 +95,27 @@ class OpenAIRequestResponseChain(
                 throw IllegalStateException(msg, e)
             }
 
-            val responseId = lastApiResponse.id()
+            val currentResponse = requireNotNull(lastApiResponse)
+            val responseId = currentResponse.id()
             responseIDs.add(responseId)
 
             // Create an entry in the garbage collection store. The client code is not required to delete responses/conversations.
             // Still, we would like to clear the backend entries at OpenAI.
             gcStore.append(GarbageCollectionEntry(System.currentTimeMillis(), responseId, conversationID))
 
-            logger.debug("Received response id={} conversation={}", lastApiResponse.id(), conversationID)
+            logger.debug("Received response id={} conversation={}", currentResponse.id(), conversationID)
 
-            val toolOutputItems = processToolCalls(lastApiResponse.output(), request)
+            val toolOutputItems = processToolCalls(currentResponse.output(), request, executionContext)
 
             if (toolOutputItems.isEmpty()) {
-                logger.debug("Final response reached id={}", lastApiResponse.id())
+                logger.debug("Final response reached id={}", currentResponse.id())
                 break
             }
 
             itemsToSend = toolOutputItems
         }
 
-        val finalMessage = extractMessage(lastApiResponse)
+        val finalMessage = extractMessage(requireNotNull(lastApiResponse))
         logger.debug("Final message extracted: {}", finalMessage.take(200))
         messages.add(PersistedMessage(role = "assistant", content = finalMessage))
 
@@ -235,7 +237,11 @@ class OpenAIRequestResponseChain(
         return client.responses().create(builder.build())
     }
 
-    private fun processToolCalls(outputItems: List<ResponseOutputItem>, request: Request): List<ResponseInputItem> {
+    private fun processToolCalls(
+        outputItems: List<ResponseOutputItem>,
+        request: Request,
+        executionContext: ExecutionContext
+    ): List<ResponseInputItem> {
         val nextItems = mutableListOf<ResponseInputItem>()
 
         for (item in outputItems) {
@@ -287,7 +293,7 @@ class OpenAIRequestResponseChain(
                 continue
             }
 
-            val nativeOutput = nativeToolRuntime.handleOutputItem(item, request)
+            val nativeOutput = nativeToolRuntime.handleOutputItem(item, request, executionContext)
             if (nativeOutput != null) {
                 nextItems.add(nativeOutput)
             }

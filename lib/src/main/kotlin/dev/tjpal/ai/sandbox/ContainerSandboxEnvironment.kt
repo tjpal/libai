@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets
 import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 import org.slf4j.LoggerFactory
 
@@ -22,7 +23,7 @@ class ContainerSandboxEnvironment private constructor(
     private val isShutdown = AtomicBoolean(false)
 
     override fun runCommand(command: String, timeout: Duration?): SandboxCommandResult {
-        if(!isShutdown.get()) {
+        if (isShutdown.get()) {
             throw IllegalStateException("Sandbox environment $id is already shut down.")
         }
 
@@ -39,8 +40,8 @@ class ContainerSandboxEnvironment private constructor(
             callback.awaitCompletion()
         } else {
             val completed = callback.awaitCompletion(timeout.toMillis(), TimeUnit.MILLISECONDS)
-            if(completed) {
-                throw Exception("Command timed out after ${timeout.toMillis()} ms in environment $id.")
+            if (!completed) {
+                throw TimeoutException("Command timed out after ${timeout.toMillis()} ms in environment $id.")
             }
         }
 

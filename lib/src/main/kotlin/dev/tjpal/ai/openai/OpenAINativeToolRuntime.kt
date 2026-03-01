@@ -3,12 +3,17 @@ package dev.tjpal.ai.openai
 import com.openai.models.responses.ResponseCreateParams
 import com.openai.models.responses.ResponseInputItem
 import com.openai.models.responses.ResponseOutputItem
+import dev.tjpal.ai.messages.ExecutionContext
 import dev.tjpal.ai.messages.Request
 import dev.tjpal.ai.tools.ToolDefinition
 
 interface OpenAINativeToolRuntime {
     fun addTool(builder: ResponseCreateParams.Builder, definition: ToolDefinition.Native)
-    fun handleOutputItem(outputItem: ResponseOutputItem, request: Request): ResponseInputItem?
+    fun handleOutputItem(
+        outputItem: ResponseOutputItem,
+        request: Request,
+        executionContext: ExecutionContext
+    ): ResponseInputItem?
 }
 
 object NoOpOpenAINativeToolRuntime : OpenAINativeToolRuntime {
@@ -19,5 +24,9 @@ object NoOpOpenAINativeToolRuntime : OpenAINativeToolRuntime {
         )
     }
 
-    override fun handleOutputItem(outputItem: ResponseOutputItem, request: Request): ResponseInputItem? = null
+    override fun handleOutputItem(
+        outputItem: ResponseOutputItem,
+        request: Request,
+        executionContext: ExecutionContext
+    ): ResponseInputItem? = null
 }
