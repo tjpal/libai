@@ -13,7 +13,6 @@ import dev.tjpal.ai.sandbox.CommandExecutionResult
 import dev.tjpal.ai.sandbox.LocalMachineCommandExecutionContext
 import dev.tjpal.ai.tools.ToolDefinition
 import java.io.File
-import java.util.Collections
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import org.slf4j.LoggerFactory
@@ -80,7 +79,6 @@ class OpenAIShellToolRuntime(
         val outputBuilder = ResponseInputItem.ShellCallOutput.builder()
             .callId(shellCall.callId())
             .status(ResponseInputItem.ShellCallOutput.Status.COMPLETED)
-            .output(Collections.emptyList())
 
         shellCall.action().maxOutputLength().ifPresent { outputBuilder.maxOutputLength(it) }
 

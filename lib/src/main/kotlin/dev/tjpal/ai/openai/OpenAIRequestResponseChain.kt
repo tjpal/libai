@@ -271,9 +271,7 @@ class OpenAIRequestResponseChain(
                 } catch (e: Exception) {
                     val msg = "Tool invocation failed for $functionName: ${e.message}"
                     logger.error(msg, e)
-                    // Return the tool error to the model so it can recover (e.g. choose another path),
-                    // instead of aborting the whole response loop.
-                    "__tool_error__ $msg"
+                    throw IllegalStateException(msg, e)
                 }
 
                 logger.info(
