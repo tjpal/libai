@@ -1,5 +1,7 @@
 package dev.tjpal.ai.tools
 
+import dev.tjpal.ai.messages.DefaultExecutionContext
+import dev.tjpal.ai.messages.ExecutionContext
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -16,7 +18,8 @@ interface Tool {
 data class ToolExecutionContext(
     val definitionName: String,
     val arguments: JsonElement? = null,
-    val staticParameters: JsonElement? = null
+    val staticParameters: JsonElement? = null,
+    val executionContext: ExecutionContext = DefaultExecutionContext
 ) {
     inline fun <reified T : Any> argument(path: String): T? = get(arguments, path, T::class)
 

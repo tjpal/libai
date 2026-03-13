@@ -267,7 +267,7 @@ class OpenAIRequestResponseChain(
                         parsedArguments,
                         staticParams
                     )
-                    toolRegistry.invokeTool(functionName, parsedArguments, staticParams)
+                    toolRegistry.invokeTool(functionName, parsedArguments, staticParams, executionContext)
                 } catch (e: Exception) {
                     val msg = "Tool invocation failed for $functionName: ${e.message}"
                     logger.error(msg, e)

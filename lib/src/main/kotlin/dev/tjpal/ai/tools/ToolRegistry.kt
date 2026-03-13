@@ -2,6 +2,8 @@ package dev.tjpal.ai.tools
 
 import com.fasterxml.jackson.annotation.JsonTypeName
 import dev.tjpal.ai.di.LibrarySingleton
+import dev.tjpal.ai.messages.DefaultExecutionContext
+import dev.tjpal.ai.messages.ExecutionContext
 import kotlinx.serialization.json.JsonElement
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
@@ -44,9 +46,15 @@ class ToolRegistry @Inject constructor(
      * @param definitionName logical name of the tool definition
      * @param arguments JSON element parsed from the model's function call (nullable)
      * @param staticParameters JSON element representing static parameters for the tool (nullable)
+     * @param executionContext request-scoped execution context
      * @return the string output produced by the tool's execute() method
      */
-    fun invokeTool(definitionName: String, arguments: JsonElement?, staticParameters: JsonElement?): String {
+    fun invokeTool(
+        definitionName: String,
+        arguments: JsonElement?,
+        staticParameters: JsonElement?,
+        executionContext: ExecutionContext = DefaultExecutionContext
+    ): String {
         val toolClass = toolsByDefinitionName[definitionName]
             ?: throw IllegalStateException("No tool class registered for definition name: $definitionName")
 
@@ -56,7 +64,8 @@ class ToolRegistry @Inject constructor(
                 ToolExecutionContext(
                     definitionName = definitionName,
                     arguments = arguments,
-                    staticParameters = staticParameters
+                    staticParameters = staticParameters,
+                    executionContext = executionContext
                 )
             )
 
