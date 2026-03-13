@@ -199,6 +199,11 @@ class OpenAIRequestResponseChain(
             .model(request.model)
             .conversation(conversationID)
 
+        request.parallelToolCalls?.let {
+            logger.debug("Setting parallelToolCalls to: {}", it)
+            builder.parallelToolCalls(it)
+        }
+
         request.temperature?.let {
             logger.debug("Setting temperature to: {}", it)
             builder.temperature(it)

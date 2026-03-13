@@ -80,6 +80,38 @@ class OpenAILLMIntegrationTest {
     }
 
     @Test
+    fun createsResponseUsingMultipleToolCallsWithParallelToolCallsEnabled() {
+        val configPath = Path(System.getProperty("user.home"), ".libai", "config.json")
+        check(Files.exists(configPath)) { "Missing config file: $configPath" }
+
+        val config = json.decodeFromString<OpenAIConfig>(Files.readString(configPath))
+        val llm = LibAI(config).llm(LLMProvider.OPENAI)
+        val chain = llm.createResponseRequestChain()
+
+        try {
+            val response = chain.createResponse(
+                Request(
+                    input = "Call alpha_tool and beta_tool exactly once, then provide one line with both results.",
+                    instructions = """
+                        You must call alpha_tool and beta_tool exactly once.
+                        Final answer must contain both tool outputs verbatim.
+                    """.trimIndent(),
+                    model = "gpt-5-mini",
+                    tools = listOf(IntegrationAlphaTool::class, IntegrationBetaTool::class),
+                    parallelToolCalls = true
+                )
+            )
+
+            assertTrue(response.message.isNotBlank(), "Expected non-empty response from OpenAI")
+            assertContains(response.message, "ALPHA_OK")
+            assertContains(response.message, "BETA_OK")
+            println("Received response with multiple tool outputs: ${response.message}")
+        } finally {
+            chain.delete()
+        }
+    }
+
+    @Test
     fun synthesizesAndTranscribesAudioRoundTrip() {
         val configPath = Path(System.getProperty("user.home"), ".libai", "config.json")
         check(Files.exists(configPath)) { "Missing config file: $configPath" }
@@ -121,6 +153,26 @@ class OpenAILLMIntegrationTest {
             val target = nameFromArgs?.trim().takeUnless { it.isNullOrEmpty() } ?: "World"
             return "$greetingPrefix, $target!"
         }
+    }
+
+    @JsonTypeName("alpha_tool")
+    @JsonClassDescription("Returns a fixed marker for integration testing.")
+    class IntegrationAlphaTool : Tool {
+        @get:JsonPropertyDescription("Optional note for testing.")
+        @Suppress("unused")
+        val note: String? = null
+
+        override fun execute(context: ToolExecutionContext): String = "ALPHA_OK"
+    }
+
+    @JsonTypeName("beta_tool")
+    @JsonClassDescription("Returns a fixed marker for integration testing.")
+    class IntegrationBetaTool : Tool {
+        @get:JsonPropertyDescription("Optional note for testing.")
+        @Suppress("unused")
+        val note: String? = null
+
+        override fun execute(context: ToolExecutionContext): String = "BETA_OK"
     }
 
     private fun normalizeForComparison(input: String): String {
