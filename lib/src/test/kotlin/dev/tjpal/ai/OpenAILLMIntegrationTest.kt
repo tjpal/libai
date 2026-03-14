@@ -5,12 +5,14 @@ import com.fasterxml.jackson.annotation.JsonPropertyDescription
 import com.fasterxml.jackson.annotation.JsonTypeName
 import dev.tjpal.ai.di.LLMProvider
 import dev.tjpal.ai.messages.Request
+import dev.tjpal.ai.messages.RequestCancelledException
 import dev.tjpal.ai.openai.OpenAIConfig
 import dev.tjpal.ai.tools.Tool
 import dev.tjpal.ai.tools.ToolExecutionContext
 import java.nio.file.Files
 import kotlin.io.path.Path
 import kotlin.test.Test
+import kotlin.test.assertFailsWith
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
@@ -134,6 +136,40 @@ class OpenAILLMIntegrationTest {
             assertEquals(normalizeForComparison(expectedText), normalizeForComparison(transcribedText))
         } finally {
             Files.deleteIfExists(audioFile)
+        }
+    }
+
+    @Test
+    fun cancelsAsyncResponseMidRequestUsingGpt5Mini() {
+        val configPath = Path(System.getProperty("user.home"), ".libai", "config.json")
+        check(Files.exists(configPath)) { "Missing config file: $configPath" }
+
+        val config = json.decodeFromString<OpenAIConfig>(Files.readString(configPath))
+        val llm = LibAI(config).llm(LLMProvider.OPENAI)
+        val chain = llm.createResponseRequestChain()
+
+        try {
+            val handle = chain.createResponseAsync(
+                Request(
+                    input = """
+                        Generate a very long answer by listing 50 detailed software architecture principles, each with:
+                        1) a one-line title
+                        2) a two-line explanation
+                        3) one concrete Kotlin example.
+                    """.trimIndent(),
+                    instructions = "Start immediately and continue until done.",
+                    model = "gpt-5-mini"
+                )
+            )
+
+            val cancelled = handle.cancel("integration test cancellation")
+            assertTrue(cancelled, "Expected async request cancellation to be accepted.")
+
+            assertFailsWith<RequestCancelledException> {
+                handle.await()
+            }
+        } finally {
+            chain.delete()
         }
     }
 

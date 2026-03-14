@@ -1,15 +1,23 @@
 package dev.tjpal.ai.openai
 
 import com.openai.client.OpenAIClient
+import com.openai.core.http.StreamResponse
+import com.openai.helpers.ResponseAccumulator
 import com.openai.models.responses.ResponseCreateParams
 import com.openai.models.responses.ResponseInputItem
 import com.openai.models.responses.ResponseOutputItem
+import com.openai.models.responses.ResponseStreamEvent
+import dev.tjpal.ai.messages.AsyncResponseHandle
 import dev.tjpal.ai.messages.ExecutionContext
+import dev.tjpal.ai.messages.FutureAsyncResponseHandle
 import dev.tjpal.ai.messages.Request
+import dev.tjpal.ai.messages.RequestCancelledException
 import dev.tjpal.ai.messages.RequestResponseChain
 import dev.tjpal.ai.messages.Response
 import dev.tjpal.ai.tools.ToolDefinition
 import dev.tjpal.ai.tools.ToolRegistry
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -24,9 +32,11 @@ class OpenAIRequestResponseChain(
     private val nativeToolRuntime: OpenAINativeToolRuntime
 ) : RequestResponseChain() {
     private val logger = LoggerFactory.getLogger(OpenAIRequestResponseChain::class.java)
+    private val activeAsyncRequestLock = Any()
     private var conversationId: String? = null
     private var responseIDs = mutableListOf<String>()
     private var messages = mutableListOf<PersistedMessage>()
+    private var activeAsyncHandle: AsyncResponseHandle? = null
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -78,6 +88,71 @@ class OpenAIRequestResponseChain(
     }
 
     override fun createResponse(request: Request, executionContext: ExecutionContext): Response {
+        return createResponseInternal(request, executionContext) { itemsToSend, currentRequest, conversationID ->
+            buildAndSend(itemsToSend, currentRequest, conversationID)
+        }
+    }
+
+    override fun createResponseAsync(request: Request, executionContext: ExecutionContext): AsyncResponseHandle {
+        synchronized(activeAsyncRequestLock) {
+            if (activeAsyncHandle?.isDone() == false) {
+                throw IllegalStateException(
+                    "An async response is already in progress for this request-response chain."
+                )
+            }
+
+            val cancellationRequested = AtomicBoolean(false)
+            val activeStreamRef = AtomicReference<StreamResponse<ResponseStreamEvent>?>(null)
+
+            val future = submitAsync {
+                try {
+                    createResponseInternal(request, executionContext) { itemsToSend, currentRequest, conversationID ->
+                        buildAndSendStreaming(
+                            itemsToSend,
+                            currentRequest,
+                            conversationID,
+                            cancellationRequested,
+                            activeStreamRef
+                        )
+                    }
+                } finally {
+                    activeStreamRef.getAndSet(null)?.close()
+                }
+            }
+
+            lateinit var handle: AsyncResponseHandle
+            handle = FutureAsyncResponseHandle(
+                future = future,
+                cancelAction = { reason ->
+                    if (future.isDone) {
+                        return@FutureAsyncResponseHandle false
+                    }
+
+                    if (!cancellationRequested.compareAndSet(false, true)) {
+                        return@FutureAsyncResponseHandle false
+                    }
+
+                    logger.info("Cancelling OpenAI async response: reason={}", reason ?: "<none>")
+                    activeStreamRef.get()?.close()
+                    future.cancel(true)
+                    true
+                }
+            )
+
+            activeAsyncHandle = handle
+            return handle
+        }
+    }
+
+    private fun createResponseInternal(
+        request: Request,
+        executionContext: ExecutionContext,
+        send: (
+            items: List<ResponseInputItem>,
+            request: Request,
+            conversationID: String
+        ) -> com.openai.models.responses.Response
+    ): Response {
         val conversationID = ensureConversationId()
         messages.add(PersistedMessage(role = "user", content = request.input))
 
@@ -88,7 +163,10 @@ class OpenAIRequestResponseChain(
 
         while (true) {
             try {
-                lastApiResponse = buildAndSend(itemsToSend, request, conversationID)
+                lastApiResponse = send(itemsToSend, request, conversationID)
+            } catch (e: RequestCancelledException) {
+                logger.info("Response generation cancelled for conversation={}", conversationID)
+                throw e
             } catch (e: Exception) {
                 val msg = "Failed to create response for conversation $conversationID: ${e.message}"
                 logger.error(msg, e)
@@ -193,6 +271,58 @@ class OpenAIRequestResponseChain(
         request: Request,
         conversationID: String
     ): com.openai.models.responses.Response {
+        val builder = createResponseBuilder(items, request, conversationID)
+
+        logger.debug("Creating OpenAI response for conversation={}", conversationID)
+
+        return client.responses().create(builder.build())
+    }
+
+    private fun buildAndSendStreaming(
+        items: List<ResponseInputItem>,
+        request: Request,
+        conversationID: String,
+        cancellationRequested: AtomicBoolean,
+        activeStreamRef: AtomicReference<StreamResponse<ResponseStreamEvent>?>
+    ): com.openai.models.responses.Response {
+        val builder = createResponseBuilder(items, request, conversationID)
+        logger.debug("Creating OpenAI streaming response for conversation={}", conversationID)
+
+        val responseAccumulator = ResponseAccumulator.create()
+
+        try {
+            client.responses().createStreaming(builder.build()).use { streamResponse ->
+                activeStreamRef.set(streamResponse)
+                streamResponse.stream().forEach { event ->
+                    if (cancellationRequested.get()) {
+                        throw RequestCancelledException("Request was cancelled.")
+                    }
+                    responseAccumulator.accumulate(event)
+                }
+            }
+        } catch (e: RequestCancelledException) {
+            throw e
+        } catch (e: Exception) {
+            if (cancellationRequested.get()) {
+                throw RequestCancelledException("Request was cancelled.", e)
+            }
+            throw e
+        } finally {
+            activeStreamRef.set(null)
+        }
+
+        if (cancellationRequested.get()) {
+            throw RequestCancelledException("Request was cancelled.")
+        }
+
+        return responseAccumulator.response()
+    }
+
+    private fun createResponseBuilder(
+        items: List<ResponseInputItem>,
+        request: Request,
+        conversationID: String
+    ): ResponseCreateParams.Builder {
         val builder = ResponseCreateParams.builder()
             .input(ResponseCreateParams.Input.ofResponse(items))
             .instructions(request.instructions)
@@ -236,10 +366,7 @@ class OpenAIRequestResponseChain(
             logger.debug("Setting topP to: {}", it)
             builder.topP(it)
         }
-
-        logger.debug("Creating OpenAI response for conversation={}", conversationID)
-
-        return client.responses().create(builder.build())
+        return builder
     }
 
     private fun processToolCalls(
