@@ -53,7 +53,7 @@ class OpenAILLM @Inject constructor(
 
         val params = SpeechCreateParams.builder()
             .model(SpeechModel.GPT_4O_MINI_TTS)
-            .voice(SpeechCreateParams.Voice.ALLOY)
+            .voice("alloy")
             .input(text)
             .responseFormat(SpeechCreateParams.ResponseFormat.MP3)
             .speed(1.0)
@@ -79,7 +79,7 @@ class OpenAILLM @Inject constructor(
 
         val createParams: TranscriptionCreateParams = TranscriptionCreateParams.builder().
             file(Path(filePath)).
-            model(AudioModel.Companion.GPT_4O_MINI_TRANSCRIBE).
+            model(AudioModel.GPT_4O_MINI_TRANSCRIBE).
             chunkingStrategy(vadConfig).
             build()
 

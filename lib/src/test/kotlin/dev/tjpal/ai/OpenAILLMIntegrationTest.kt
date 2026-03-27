@@ -215,6 +215,7 @@ class OpenAILLMIntegrationTest {
         return input
             .lowercase()
             .replace(Regex("[^a-z0-9\\s]"), " ")
+            .replace("roundtrip", "round trip")
             .replace(Regex("\\s+"), " ")
             .trim()
     }

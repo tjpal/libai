@@ -1,24 +1,17 @@
 package dev.tjpal.ai.sandbox
 
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.fail
 
 class SandboxSystemIntegrationTest {
     @Test
     fun `Sandbox System Integration Test`() {
         val dockerHost = System.getenv("DOCKER_HOST")
-            ?: fail(
-                "Missing environment variable DOCKER_HOST. " +
-                    "Set it to the Podman socket (for example: unix:///path/to/podman.sock)."
-            )
-
-        if (dockerHost.isBlank()) {
-            fail(
-                "Environment variable DOCKER_HOST is blank. " +
-                    "Set it to the Podman socket (for example: unix:///path/to/podman.sock)."
-            )
-        }
+        assumeTrue(
+            !dockerHost.isNullOrBlank(),
+            "Skipping sandbox integration test because DOCKER_HOST is not configured."
+        )
 
         val dockerClient = DockerClients.createClient()
         val sandbox = Sandbox(dockerClient)
