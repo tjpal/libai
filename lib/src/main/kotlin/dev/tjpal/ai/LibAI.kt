@@ -1,6 +1,7 @@
 package dev.tjpal.ai
 
 import dev.tjpal.ai.audio.AudioRecorder
+import dev.tjpal.ai.embeddings.Embeddings
 import dev.tjpal.ai.di.AIComponent
 import dev.tjpal.ai.di.DaggerAIComponent
 import dev.tjpal.ai.di.LLMProvider
@@ -26,6 +27,7 @@ class LibAI(
     }
 
     private val llmsByProvider: Map<String, LLM> by lazy { component.llms() }
+    private val embeddingsByModelId: Map<String, Embeddings> by lazy { component.embeddings() }
 
     fun llm(provider: LLMProvider = LLMProvider.OPENAI): LLM {
         return llm(provider.providerName)
@@ -34,6 +36,15 @@ class LibAI(
     fun llm(providerName: String): LLM {
         return llmsByProvider[providerName]
             ?: throw InvalidParameterException("No LLM is registered for provider '$providerName'. Available providers: ${llmsByProvider.keys.sorted()}")
+    }
+
+    fun embeddings(): Map<String, Embeddings> {
+        return embeddingsByModelId
+    }
+
+    fun embedding(modelId: String): Embeddings {
+        return embeddingsByModelId[modelId]
+            ?: throw InvalidParameterException("No embeddings are registered for model '$modelId'. Available models: ${embeddingsByModelId.keys.sorted()}")
     }
 
     fun audioRecorder(): AudioRecorder {

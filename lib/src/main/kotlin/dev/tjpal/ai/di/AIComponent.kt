@@ -2,6 +2,7 @@ package dev.tjpal.ai.di
 
 import dagger.BindsInstance
 import dagger.Component
+import dev.tjpal.ai.embeddings.Embeddings
 import dev.tjpal.ai.di.AIModule
 import dev.tjpal.ai.LLM
 import dev.tjpal.ai.openai.OpenAIConfig
@@ -15,6 +16,7 @@ import dev.tjpal.ai.tools.ToolsModule
 @Component(modules = [AIModule::class, ToolsModule::class, SandboxModule::class])
 interface AIComponent {
     fun llms(): Map<String, @JvmSuppressWildcards LLM>
+    fun embeddings(): Map<String, @JvmSuppressWildcards Embeddings>
     fun sandbox(): Sandbox
 
     @Component.Builder

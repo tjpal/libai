@@ -1,7 +1,5 @@
 package dev.tjpal.ai.openai
 
-import com.openai.client.OpenAIClient
-import com.openai.client.okhttp.OpenAIOkHttpClient
 import com.openai.models.audio.AudioModel
 import com.openai.models.audio.speech.SpeechCreateParams
 import com.openai.models.audio.speech.SpeechModel
@@ -10,7 +8,6 @@ import dev.tjpal.ai.LLM
 import dev.tjpal.ai.messages.RequestResponseChain
 import dev.tjpal.ai.di.LibrarySingleton
 import dev.tjpal.ai.tools.ToolRegistry
-import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
@@ -25,19 +22,8 @@ class OpenAILLM @Inject constructor(
     private val openAINativeToolRuntime: OpenAINativeToolRuntime
 ) : LLM {
     private val logger = LoggerFactory.getLogger(OpenAILLM::class.java)
-    private val client = buildClientFromFile()
+    private val client = OpenAIClients.buildClientFromCredentialPath(config.openAICredentialPath)
     private val garbageCollectionStore = ResponsesGarbageCollector(Path(config.openAIGarbageCollectorPath))
-
-    private fun buildClientFromFile(): OpenAIClient {
-        try {
-            val key = Files.readString(Paths.get(config.openAICredentialPath)).trim { it <= ' ' }
-
-            return OpenAIOkHttpClient.builder().apiKey(key).build()
-        } catch (e: IOException) {
-            logger.error("Failed to read OpenAI API key from {}", config.openAICredentialPath, e)
-            throw IllegalStateException("Failed to read OpenAI API key from ${config.openAICredentialPath}", e)
-        }
-    }
 
     override fun createResponseRequestChain(): RequestResponseChain {
         logger.debug("OpenAI RequestResponseChain created")
