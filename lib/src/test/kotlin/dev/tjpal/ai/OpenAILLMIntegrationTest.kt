@@ -10,6 +10,7 @@ import dev.tjpal.ai.openai.OpenAIConfig
 import dev.tjpal.ai.tools.Tool
 import dev.tjpal.ai.tools.ToolExecutionContext
 import java.nio.file.Files
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import kotlin.io.path.Path
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
@@ -26,7 +27,10 @@ class OpenAILLMIntegrationTest {
     @Test
     fun createsResponseUsingGpt5Nano() {
         val configPath = Path(System.getProperty("user.home"), ".libai", "config.json")
-        check(Files.exists(configPath)) { "Missing config file: $configPath" }
+        assumeTrue(
+            Files.exists(configPath),
+            "Skipping OpenAI integration test because $configPath is missing."
+        )
 
         val config = json.decodeFromString<OpenAIConfig>(Files.readString(configPath))
         val llm = LibAI(config).llm(LLMProvider.OPENAI)
@@ -52,7 +56,10 @@ class OpenAILLMIntegrationTest {
     @Test
     fun createsResponseUsingToolCall() {
         val configPath = Path(System.getProperty("user.home"), ".libai", "config.json")
-        check(Files.exists(configPath)) { "Missing config file: $configPath" }
+        assumeTrue(
+            Files.exists(configPath),
+            "Skipping OpenAI integration test because $configPath is missing."
+        )
 
         val config = json.decodeFromString<OpenAIConfig>(Files.readString(configPath))
         val llm = LibAI(config).llm(LLMProvider.OPENAI)
@@ -84,7 +91,10 @@ class OpenAILLMIntegrationTest {
     @Test
     fun createsResponseUsingMultipleToolCallsWithParallelToolCallsEnabled() {
         val configPath = Path(System.getProperty("user.home"), ".libai", "config.json")
-        check(Files.exists(configPath)) { "Missing config file: $configPath" }
+        assumeTrue(
+            Files.exists(configPath),
+            "Skipping OpenAI integration test because $configPath is missing."
+        )
 
         val config = json.decodeFromString<OpenAIConfig>(Files.readString(configPath))
         val llm = LibAI(config).llm(LLMProvider.OPENAI)
@@ -116,7 +126,10 @@ class OpenAILLMIntegrationTest {
     @Test
     fun synthesizesAndTranscribesAudioRoundTrip() {
         val configPath = Path(System.getProperty("user.home"), ".libai", "config.json")
-        check(Files.exists(configPath)) { "Missing config file: $configPath" }
+        assumeTrue(
+            Files.exists(configPath),
+            "Skipping OpenAI integration test because $configPath is missing."
+        )
 
         val config = json.decodeFromString<OpenAIConfig>(Files.readString(configPath))
         val llm = LibAI(config).llm(LLMProvider.OPENAI)
@@ -142,7 +155,10 @@ class OpenAILLMIntegrationTest {
     @Test
     fun cancelsAsyncResponseMidRequestUsingGpt5Mini() {
         val configPath = Path(System.getProperty("user.home"), ".libai", "config.json")
-        check(Files.exists(configPath)) { "Missing config file: $configPath" }
+        assumeTrue(
+            Files.exists(configPath),
+            "Skipping OpenAI integration test because $configPath is missing."
+        )
 
         val config = json.decodeFromString<OpenAIConfig>(Files.readString(configPath))
         val llm = LibAI(config).llm(LLMProvider.OPENAI)

@@ -22,7 +22,10 @@ class OpenAIShellToolRuntimeIntegrationTest {
     @Test
     fun grepKeywordsFromTempFileUsingShellTool() {
         val configPath = Path(System.getProperty("user.home"), ".libai", "config.json")
-        check(Files.exists(configPath)) { "Missing config file: $configPath" }
+        assumeTrue(
+            Files.exists(configPath),
+            "Skipping OpenAI shell tool integration test because $configPath is missing."
+        )
 
         val config = json.decodeFromString<OpenAIConfig>(Files.readString(configPath))
         val llm = LibAI(
@@ -77,7 +80,10 @@ class OpenAIShellToolRuntimeIntegrationTest {
             "Skipping container integration test unless LIBAI_RUN_CONTAINER_INTEGRATION_TESTS=true."
         )
         val configPath = Path(System.getProperty("user.home"), ".libai", "config.json")
-        check(Files.exists(configPath)) { "Missing config file: $configPath" }
+        assumeTrue(
+            Files.exists(configPath),
+            "Skipping OpenAI shell tool integration test because $configPath is missing."
+        )
 
         val config = json.decodeFromString<OpenAIConfig>(Files.readString(configPath))
         val llm = LibAI(
